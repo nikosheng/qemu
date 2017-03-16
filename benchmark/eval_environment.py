@@ -333,4 +333,4 @@ if __name__ == "__main__":
             kill_process("qemu-system-x86_64", server_ip=PRIMARY_IP, server_user=PRIMARY_USERNAME)
             kill_process("qemu-system-x86_64", server_ip=SECONDARY_IP, server_user=SECONDARY_USERNAME)
         except:
-            logging.error("stop error")
+            logging.error("vm stop error")
