@@ -329,15 +329,8 @@ if __name__ == "__main__":
             #     kill_process("qemu-system-x86_64", server_ip=PRIMARY_IP, server_user=PRIMARY_USERNAME)
             #     kill_process("qemu-system-x86_64", server_ip=SECONDARY_IP, server_user=SECONDARY_USERNAME)
     elif mode == "stop":
-        if type in ["mc", "norep"]:
-            try:
-                kill_process("qemu-system-x86_64", server_ip=PRIMARY_IP, server_user=PRIMARY_USERNAME)
-                kill_process("qemu-system-x86_64", server_ip=SECONDARY_IP, server_user=SECONDARY_USERNAME)
-            except:
-                logging.error("stop error")
-        elif type == "colo":
-            try:
-                kill_process("qemu-system-x86_64", server_ip=PRIMARY_IP, server_user=PRIMARY_USERNAME)
-                kill_process("qemu-system-x86_64", server_ip=SECONDARY_IP, server_user=SECONDARY_USERNAME)
-            except:
-                logging.error("stop error")
+        try:
+            kill_process("qemu-system-x86_64", server_ip=PRIMARY_IP, server_user=PRIMARY_USERNAME)
+            kill_process("qemu-system-x86_64", server_ip=SECONDARY_IP, server_user=SECONDARY_USERNAME)
+        except:
+            logging.error("stop error")
