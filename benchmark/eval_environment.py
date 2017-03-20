@@ -1,13 +1,9 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# python2.7.x
-
 import ConfigParser
 import argparse
 import logging
 import time
 import datetime
-import signal
+import sys
 import os
 import subprocess
 import threading
@@ -72,29 +68,51 @@ def kill_process(identifier, server_ip, server_user):
         ssh_remote_execute(command, server_user, server_ip, 2)
 
 
-def check_running_app(old_id):
-    fobj = open("/home/hkucs/qemu_output/app_identifier", "r")
-    line = fobj.readline().strip()
-    id = line.split(",")[0]
-
-    if id != old_id:
-        return id, line
-    return old_id, ""
+def is_app_running(command):
+    assert len(command) > 0
+    return True if os.system(command) == 0 else False
 
 
 def ssh_remote_execute(recv_command, server_user, server_ip, seconds=1):
-    subprocess.Popen("ssh " + server_user + "@" + server_ip + " " + recv_command, shell=True)
+    os.system("ssh -t " + server_user + "@" + server_ip + " " + recv_command)
     time.sleep(seconds)
 
 
+# def ssh_remote_subprocess_master(recv_command, server_user, server_ip):
+#     fobj = open("/home/hkucs/qemu_output/log-" + server_ip + "-" + getTimeStamp(), "w")
+#     log = subprocess.Popen("nohup ssh " + server_user + "@" + server_ip + " " + recv_command + " > /home/hkucs/qemu_output/log-" + server_ip + "-" + getTimeStamp() + " &", shell=True, stdout=subprocess.PIPE)
+#     ret = log.poll()
+#     while ret is None:
+#         line = log.stdout.readline()
+#         ret = log.poll()
+#         line = line.strip()
+#         fobj.write(line + "\n")
+#         fobj.flush()
 def ssh_remote_subprocess_master(recv_command, server_user, server_ip, server_cpu, server_memory, type):
     filename = "/home/hkucs/qemu_output/[" + type + "]log-" + server_ip + "-cpu[" + server_cpu + "]-mem[" + server_memory + "]-" + getTimeStamp()
     fobj = open(filename, "w")
     ssh_remote_execute("ln -fs " + filename + " /home/hkucs/qemu_output/latest_master_log", server_user, server_ip)
     log = subprocess.Popen("nohup ssh " + server_user + "@" + server_ip + " " + recv_command
                            + " > " + filename + " &", shell=True, stdout=subprocess.PIPE)
+    ret = log.poll()
+    while ret is None:
+        line = log.stdout.readline()
+        ret = log.poll()
+        line = line.strip()
+        fobj.write(line + "\n")
+        fobj.flush()
 
 
+# def ssh_remote_subprocess_slave(recv_command, server_user, server_ip):
+#     fobj = open("/home/hkucs/qemu_output/log-" + server_ip + "-" + getTimeStamp(), "w")
+#     log = subprocess.Popen("nohup ssh " + server_user + "@" + server_ip + " " + recv_command + " > /home/hkucs/qemu_output/log-" + server_ip + "-" + getTimeStamp() + " &", shell=True, stdout=subprocess.PIPE)
+#     ret = log.poll()
+#     while ret is None:
+#         line = log.stdout.readline()
+#         ret = log.poll()
+#         line = line.strip()
+#         fobj.write(line + "\n")
+#         fobj.flush()
 def ssh_remote_subprocess_slave(recv_command, server_user, server_ip, primary_ip, server_cpu, server_memory, type):
     # fobj = open("/home/hkucs/qemu_output/log-" + server_ip + "-" + getTimeStamp(), "w")
     # log = subprocess.Popen("nohup ssh " + server_user + "@" + server_ip + " " + recv_command +
@@ -106,13 +124,14 @@ def ssh_remote_subprocess_slave(recv_command, server_user, server_ip, primary_ip
     ssh_remote_execute("ln -fs " + filename + " /home/hkucs/qemu_output/latest_slave_log", server_user, primary_ip)
     log = subprocess.Popen("nohup ssh " + server_user + "@" + server_ip + " " + recv_command
                            + " > " + filename + " &", shell=True, stdout=subprocess.PIPE)
-    # ret = log.poll()
-    # while ret is None:
-    #     line = log.stdout.readline()
-    #     ret = log.poll()
-    #     line = line.strip()
-    #     fobj.write(line + "\n")
-    #     fobj.flush()
+    ret = log.poll()
+    while ret is None:
+        line = log.stdout.readline()
+        ret = log.poll()
+        line = line.strip()
+        fobj.write(line + "\n")
+        fobj.flush()
+
 
 
 def ssh_remote_nc(recv_command, server_user, server_ip, telnet_ip, telnet_port, seconds=1):
@@ -122,8 +141,8 @@ def ssh_remote_nc(recv_command, server_user, server_ip, telnet_ip, telnet_port, 
     time.sleep(seconds)
 
 
-def init_dirty_pages(recv_command, server_user, server_ip, seconds=1):
-    ssh_remote_execute(recv_command, server_user, server_ip, seconds)
+def init_dirty_pages(recv_command, server_user, server_ip):
+    ssh_remote_execute(recv_command, server_user, server_ip)
 
 
 if __name__ == "__main__":
@@ -162,6 +181,11 @@ if __name__ == "__main__":
     parser.add_argument('--memory', '-mem',
                         type=str,
                         help="input the memory size")
+    parser.add_argument('--primary', '-primary',
+                        type=str)
+    parser.add_argument('--secondary', '-secondary',
+                        type=str)
+
     args = parser.parse_args()
 
     mode = args.mode
@@ -169,6 +193,8 @@ if __name__ == "__main__":
     type = args.type
     CPU = args.cpu
     MEMORY = args.memory
+    PRIMARY_IP = args.primary
+    SECONDARY_IP = args.secondary
 
     logging.info("processing '" + config_file + "'")
     full_path = getConfigFullPath(config_file)
@@ -177,9 +203,9 @@ if __name__ == "__main__":
 
     # 2. determine the running environment
     OPTION = getConfigSections(local_config, "KVM_CONFIG")['option']
-    PRIMARY_IP = getConfigSections(local_config, "KVM_CONFIG")['primary_ip']
+    # PRIMARY_IP = getConfigSections(local_config, "KVM_CONFIG")['primary_ip']
     PRIMARY_PORT = getConfigSections(local_config, "KVM_CONFIG")['primary_port']
-    SECONDARY_IP = getConfigSections(local_config, "KVM_CONFIG")['secondary_ip']
+    # SECONDARY_IP = getConfigSections(local_config, "KVM_CONFIG")['secondary_ip']
     SECONDARY_PORT = getConfigSections(local_config, "KVM_CONFIG")['secondary_port']
     PRIMARY_QEMU_PATH = getConfigSections(local_config, "KVM_CONFIG")['primary_qemu_path']
     SECONDARY_QEMU_PATH = getConfigSections(local_config, "KVM_CONFIG")['secondary_qemu_path']
@@ -264,7 +290,7 @@ if __name__ == "__main__":
             time.sleep(10)
 
             if type == "mc":
-                init_dirty_pages(REMOTE_DIRTY_INIT_COMMAND, VM_USER, VM_IP, 5)
+                init_dirty_pages(REMOTE_DIRTY_INIT_COMMAND, VM_USER, VM_IP)
                 ssh_remote_nc(QEMU_MONITOR_ENABLE_MC, PRIMARY_USERNAME, PRIMARY_IP, TELNET_IP, TELNET_PORT, 2)
                 ssh_remote_nc(QEMU_MONITOR_ENABLE_MC_DISK_DISABLE, PRIMARY_USERNAME, PRIMARY_IP, TELNET_IP, TELNET_PORT, 2)
                 ssh_remote_nc(QEMU_MONITOR_ENABLE_MC_NET_DISABLE, PRIMARY_USERNAME, PRIMARY_IP, TELNET_IP, TELNET_PORT, 2)
