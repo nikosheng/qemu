@@ -96,7 +96,6 @@ def ssh_remote_subprocess_slave(recv_command, server_user, server_ip, primary_ip
                            + " > " + filename + " &", shell=True, stdout=subprocess.PIPE)
 
 
-
 def ssh_remote_nc(recv_command, server_user, server_ip, telnet_ip, telnet_port, seconds=1):
     os.system("ssh " + server_user + "@" + server_ip +
               ' echo "' + recv_command +
@@ -135,7 +134,7 @@ if __name__ == "__main__":
     parser.add_argument('--filename', '-f',
                         type=str,
                         help="include a environment setting script")
-    parser.add_argument('--type', '-t', choices=('mc', 'colo', 'norep'),
+    parser.add_argument('--type', '-t', choices=('mc', 'colo', 'norep', "vmft"),
                         type=str,
                         help="choose an environment to start or stop")
     parser.add_argument('--cpu', '-cpu',
@@ -186,6 +185,7 @@ if __name__ == "__main__":
         REMOTE_DIRTY_INIT_COMMAND = getConfigSections(local_config, "KVM_MC")['remote_dirty_init_command']
         VM_USER = getConfigSections(local_config, "KVM_MC")['vm_user']
         VM_IP = getConfigSections(local_config, "KVM_MC")['vm_ip']
+        NUMIFBS = getConfigSections(local_config, "KVM_MC")['numifbs']
         QEMU_MONITOR_ENABLE_MC_DISK_DISABLE = getConfigSections(local_config, "KVM_MC")[
             'qemu_monitor_enable_mc_disk_disable']
         QEMU_MONITOR_ENABLE_MC_NET_DISABLE = getConfigSections(local_config, "KVM_MC")[
@@ -223,10 +223,27 @@ if __name__ == "__main__":
         SLAVE_NBD_SERVER_START = getConfigSections(local_config, "KVM_COLO_SLAVE")['slave_nbd_server_start']
         SLAVE_NBD_SERVER_ADD = getConfigSections(local_config, "KVM_COLO_SLAVE")['slave_nbd_server_add']
 
+    elif type == "vmft":
+        CHILDREN_FILE_NAME = getConfigSections(local_config, "VM_FT_MASTER")['children_file_name']
+        ACTIVE_IMG = getConfigSections(local_config, "VM_FT_MASTER")['active_img']
+        HIDDEN_IMG = getConfigSections(local_config, "VM_FT_MASTER")['hidden_img']
+        NUMIFBS = getConfigSections(local_config, "VM_FT_MASTER")['numifbs']
+        FILE_HOST = getConfigSections(local_config, "VM_FT_MASTER")['file_host']
+        FILE_PORT = getConfigSections(local_config, "VM_FT_MASTER")['file_port']
+        X_CHECKPOINT_DELAY = getConfigSections(local_config, "VM_FT_MASTER")['x_checkpoint_delay']
+        TCP_ADDRESS = getConfigSections(local_config, "VM_FT_MASTER")['tcp_address']
+        MASTER_TELNET_IP = getConfigSections(local_config, "VM_FT_MASTER")['master_telnet_ip']
+        MASTER_TELNET_PORT = getConfigSections(local_config, "VM_FT_MASTER")['master_telnet_port']
+
+        NDBSERVER_HOST = getConfigSections(local_config, "VM_FT_SLAVE")['ndbserver_host']
+        NDBSERVER_PORT = getConfigSections(local_config, "VM_FT_SLAVE")['ndbserver_port']
+        SLAVE_TELNET_IP = getConfigSections(local_config, "VM_FT_SLAVE")['slave_telnet_ip']
+        SLAVE_TELNET_PORT = getConfigSections(local_config, "VM_FT_SLAVE")['slave_telnet_port']
+
     # 3. launch or shutdown the environment
     if mode == "start":
         if type in ['norep', 'mc']:
-            command = "sudo /home/hkucs/qemumc/qemu/x86_64-softmmu/qemu-system-x86_64 " \
+            command = "sudo " + PRIMARY_QEMU_PATH +"qemu/x86_64-softmmu/qemu-system-x86_64 " \
                       "/ubuntu/" + MIRROR + " -m " + MEMORY + " -smp " + CPU + \
                       " --enable-kvm -netdev tap,id=net0,ifname=tap0," \
                       "script=/etc/qemu-ifup,downscript=/etc/qemu-ifdown " \
@@ -239,7 +256,7 @@ if __name__ == "__main__":
             t1.start()
             time.sleep(5)
 
-            command = "sudo /home/hkucs/qemumc/qemu/x86_64-softmmu/qemu-system-x86_64" \
+            command = "sudo " + SECONDARY_QEMU_PATH + "qemu/x86_64-softmmu/qemu-system-x86_64" \
                       " /local/ubuntu/" + MIRROR + " -m " + MEMORY + " -smp " + CPU + \
                       " --enable-kvm -netdev tap,id=net0," \
                       "ifname=tap0,script=/etc/qemu-ifup," \
@@ -254,9 +271,15 @@ if __name__ == "__main__":
 
             if type == "mc":
                 init_dirty_pages(REMOTE_DIRTY_INIT_COMMAND, VM_USER, VM_IP)
+                ssh_remote_execute("sudo modprobe ifb numifbs=" + NUMIFBS, PRIMARY_USERNAME, PRIMARY_IP, 2)
+                ssh_remote_execute("sudo ip link set up ifb0", PRIMARY_USERNAME, PRIMARY_IP, 2)
+                ssh_remote_execute("sudo tc qdisc add dev tap0 ingress", PRIMARY_USERNAME, PRIMARY_IP, 2)
+                ssh_remote_execute("sudo tc filter add dev tap0 parent ffff: proto ip pref 10 u32 match u32 0 0 action mirred egress redirect dev ifb0",
+                                   PRIMARY_USERNAME, PRIMARY_IP, 2)
+
                 ssh_remote_nc(QEMU_MONITOR_ENABLE_MC, PRIMARY_USERNAME, PRIMARY_IP, TELNET_IP, TELNET_PORT, 2)
                 ssh_remote_nc(QEMU_MONITOR_ENABLE_MC_DISK_DISABLE, PRIMARY_USERNAME, PRIMARY_IP, TELNET_IP, TELNET_PORT, 2)
-                ssh_remote_nc(QEMU_MONITOR_ENABLE_MC_NET_DISABLE, PRIMARY_USERNAME, PRIMARY_IP, TELNET_IP, TELNET_PORT, 2)
+                # ssh_remote_nc(QEMU_MONITOR_ENABLE_MC_NET_DISABLE, PRIMARY_USERNAME, PRIMARY_IP, TELNET_IP, TELNET_PORT, 2)
                 ssh_remote_nc(QEMU_MONITOR_START_MC, PRIMARY_USERNAME, PRIMARY_IP, TELNET_IP, TELNET_PORT, 2)
 
         elif type == "colo":
@@ -331,9 +354,78 @@ if __name__ == "__main__":
                 ssh_remote_nc(MASTER_CHILD_ADD, PRIMARY_USERNAME, PRIMARY_IP, MASTER_TELNET_IP, MASTER_TELNET_PORT, 2)
                 ssh_remote_nc(MASTER_MIGRATE_SET_CAPABILITY, PRIMARY_USERNAME, PRIMARY_IP, MASTER_TELNET_IP, MASTER_TELNET_PORT, 2)
                 ssh_remote_nc(MASTER_MIGRATE_TCP, PRIMARY_USERNAME, PRIMARY_IP, MASTER_TELNET_IP, MASTER_TELNET_PORT, 2)
-            # except:
-            #     kill_process("qemu-system-x86_64", server_ip=PRIMARY_IP, server_user=PRIMARY_USERNAME)
-            #     kill_process("qemu-system-x86_64", server_ip=SECONDARY_IP, server_user=SECONDARY_USERNAME)
+
+        elif type == "vmft":
+            command = "sudo LD_LIBRARY_PATH=$VMFT_ROOT/rdma-paxos/target:$LD_LIBRARY_PATH " \
+                      "x86_64-softmmu/qemu-system-x86_64 -enable-kvm -boot c " \
+                      "-m " + MEMORY + " -smp " + CPU + " -qmp stdio -vnc :8 " \
+                      "-name primary -cpu qemu64,+kvmclock -device piix3-usb-uhci " \
+                      "-drive if=virtio,id=colo-disk0,driver=quorum,read-pattern=fifo," \
+                      "vote-threshold=1,children.0.file.filename=" + CHILDREN_FILE_NAME + ",children.0.driver=raw -S " \
+                      "-netdev tap,id=hn0,vhost=off," \
+                      "script=/etc/qemu-ifup,downscript=/etc/qemu-ifdown " \
+                      "-device e1000,id=e0,netdev=hn0,mac=52:a4:00:12:78:66 " \
+                      "-monitor telnet:" + MASTER_TELNET_IP + ":" + MASTER_TELNET_PORT + ",server,nowait"
+
+            t1 = threading.Thread(target=ssh_remote_subprocess_master,
+                                  args=(command, PRIMARY_USERNAME, PRIMARY_IP, CPU, MEMORY, type))
+            t1.start()
+            time.sleep(5)
+
+            command = "sudo LD_LIBRARY_PATH=$VMFT_ROOT/rdma-paxos/target:$LD_LIBRARY_PATH " \
+                      "x86_64-softmmu/qemu-system-x86_64 -boot c " \
+                      "-m " + MEMORY + " -smp " + CPU + " -qmp stdio -vnc :8 " \
+                      "-name secondary -enable-kvm -cpu qemu64," \
+                      "+kvmclock -device piix3-usb-uhci -drive if=none,id=colo-disk0," \
+                      "file.filename=" + CHILDREN_FILE_NAME + \
+                      ",driver=raw,node-name=node0 -drive if=virtio,id=active-disk0,driver=replication," \
+                      "mode=secondary,file.driver=qcow2,top-id=active-disk0," \
+                      "file.file.filename=" + ACTIVE_IMG + \
+                      ",file.backing.driver=qcow2," \
+                      "file.backing.file.filename=" + HIDDEN_IMG + \
+                      ",file.backing.backing=colo-disk0 " \
+                      "-netdev tap,id=hn0,vhost=off,script=/etc/qemu-ifup,downscript=/etc/qemu-ifdown " \
+                      "-device e1000,netdev=hn0,mac=52:a4:00:12:78:66 " \
+                      "-chardev socket,id=red0,path=/dev/shm/mirror.sock " \
+                      "-chardev socket,id=red1,path=/dev/shm/redirector.sock " \
+                      "-object filter-redirector,id=f1,netdev=hn0,queue=tx,indev=red0 " \
+                      "-object filter-redirector,id=f2,netdev=hn0,queue=rx,outdev=red1 " \
+                      "-monitor telnet:" + SLAVE_TELNET_IP + ":" + SLAVE_TELNET_PORT + \
+                      ",server,nowait " \
+                      "-incoming tcp:" + TCP_ADDRESS
+            t2 = threading.Thread(target=ssh_remote_subprocess_slave,
+                                  args=(command, SECONDARY_USERNAME, SECONDARY_IP, PRIMARY_IP, CPU, MEMORY, type))
+            t2.start()
+            time.sleep(20)
+
+            ssh_remote_execute("sudo modprobe ifb numifbs=" + NUMIFBS, PRIMARY_USERNAME, PRIMARY_IP, 2)
+            ssh_remote_execute("sudo ip link set up ifb0", PRIMARY_USERNAME, PRIMARY_IP, 2)
+            ssh_remote_execute("sudo tc qdisc add dev tap0 ingress", PRIMARY_USERNAME, PRIMARY_IP, 2)
+            ssh_remote_execute("sudo tc filter add dev tap0 parent ffff: proto ip pref 10 u32 match u32 0 0 action mirred egress redirect dev ifb0",
+                               PRIMARY_USERNAME, PRIMARY_IP, 2)
+
+            # Backup JSON
+            ssh_remote_nc("{'execute':'qmp_capabilities'}", SECONDARY_USERNAME, SECONDARY_IP, SLAVE_TELNET_IP, SLAVE_TELNET_PORT, 2)
+            ssh_remote_nc("{ 'execute': 'nbd-server-start','arguments': {'addr': {'type': 'inet', 'data': {'host': '" + NDBSERVER_HOST +
+                          "', 'port': '" + NDBSERVER_PORT + "'}}}}", SECONDARY_USERNAME, SECONDARY_IP, SLAVE_TELNET_IP, SLAVE_TELNET_PORT, 2)
+            ssh_remote_nc("{'execute': 'nbd-server-add', 'arguments': {'device': 'colo-disk0', 'writable': true } }",
+                          SECONDARY_USERNAME, SECONDARY_IP, SLAVE_TELNET_IP, SLAVE_TELNET_PORT, 2)
+
+            # Primary JSON
+            ssh_remote_nc("{'execute':'qmp_capabilities'}", PRIMARY_USERNAME, PRIMARY_IP, MASTER_TELNET_IP, MASTER_TELNET_PORT, 2)
+            ssh_remote_nc("{'execute': 'human-monitor-command','arguments': {'command-line': 'drive_add -n buddy "
+                          "driver=replication,mode=primary,file.driver=nbd,file.host=10.22.1.3,file.port=8889,"
+                          "file.export=colo-disk0,node-name=node0'}}",
+                          PRIMARY_USERNAME, PRIMARY_IP, MASTER_TELNET_IP, MASTER_TELNET_PORT, 2)
+            ssh_remote_nc("{'execute':'x-blockdev-change', 'arguments':{'parent': 'colo-disk0', 'node': 'node0'}}",
+                          PRIMARY_USERNAME, PRIMARY_IP, MASTER_TELNET_IP, MASTER_TELNET_PORT, 2)
+            ssh_remote_nc("{'execute': 'migrate-set-capabilities','arguments': {'capabilities': [{'capability': 'x-colo', 'state': true }]}}",
+                          PRIMARY_USERNAME, PRIMARY_IP, MASTER_TELNET_IP, MASTER_TELNET_PORT, 2)
+            ssh_remote_nc("{'execute': 'migrate-set-parameters' , 'arguments': { 'x-checkpoint-delay': " + X_CHECKPOINT_DELAY + "}}",
+                          PRIMARY_USERNAME, PRIMARY_IP, MASTER_TELNET_IP, MASTER_TELNET_PORT, 2)
+            ssh_remote_nc("{'execute': 'migrate', 'arguments': {'uri': 'tcp:" + TCP_ADDRESS + "'}}",
+                          PRIMARY_USERNAME, PRIMARY_IP, MASTER_TELNET_IP, MASTER_TELNET_PORT, 2)
+
     elif mode == "stop":
         try:
             kill_process("qemu-system-x86_64", server_ip=PRIMARY_IP, server_user=PRIMARY_USERNAME)
