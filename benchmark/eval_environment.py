@@ -74,20 +74,10 @@ def is_app_running(command):
 
 
 def ssh_remote_execute(recv_command, server_user, server_ip, seconds=1):
-    os.system("ssh -t " + server_user + "@" + server_ip + " '" + recv_command + "'")
+    os.system("ssh " + server_user + "@" + server_ip + " '" + recv_command + "'")
     time.sleep(seconds)
 
 
-# def ssh_remote_subprocess_master(recv_command, server_user, server_ip):
-#     fobj = open("/home/hkucs/qemu_output/log-" + server_ip + "-" + getTimeStamp(), "w")
-#     log = subprocess.Popen("nohup ssh " + server_user + "@" + server_ip + " " + recv_command + " > /home/hkucs/qemu_output/log-" + server_ip + "-" + getTimeStamp() + " &", shell=True, stdout=subprocess.PIPE)
-#     ret = log.poll()
-#     while ret is None:
-#         line = log.stdout.readline()
-#         ret = log.poll()
-#         line = line.strip()
-#         fobj.write(line + "\n")
-#         fobj.flush()
 def ssh_remote_subprocess_master(recv_command, server_user, server_ip, server_cpu, server_memory, type):
     filename = "/home/hkucs/qemu_output/[" + type + "]log-" + server_ip + "-cpu[" + server_cpu + "]-mem[" + server_memory + "]-" + getTimeStamp()
     # fobj = open(filename, "w")
@@ -95,49 +85,20 @@ def ssh_remote_subprocess_master(recv_command, server_user, server_ip, server_cp
     os.system("ln -fs " + filename + " /home/hkucs/qemu_output/latest_master_log")
     log = subprocess.Popen("nohup ssh " + server_user + "@" + server_ip + " " + recv_command
                            + " > " + filename + " &", shell=True, stdout=subprocess.PIPE)
-    # ret = log.poll()
-    # while ret is None:
-    #     line = log.stdout.readline()
-    #     ret = log.poll()
-    #     line = line.strip()
-    #     fobj.write(line + "\n")
-    #     fobj.flush()
 
 
-# def ssh_remote_subprocess_slave(recv_command, server_user, server_ip):
-#     fobj = open("/home/hkucs/qemu_output/log-" + server_ip + "-" + getTimeStamp(), "w")
-#     log = subprocess.Popen("nohup ssh " + server_user + "@" + server_ip + " " + recv_command + " > /home/hkucs/qemu_output/log-" + server_ip + "-" + getTimeStamp() + " &", shell=True, stdout=subprocess.PIPE)
-#     ret = log.poll()
-#     while ret is None:
-#         line = log.stdout.readline()
-#         ret = log.poll()
-#         line = line.strip()
-#         fobj.write(line + "\n")
-#         fobj.flush()
 def ssh_remote_subprocess_slave(recv_command, server_user, server_ip, primary_ip, server_cpu, server_memory, type):
-    # fobj = open("/home/hkucs/qemu_output/log-" + server_ip + "-" + getTimeStamp(), "w")
-    # log = subprocess.Popen("nohup ssh " + server_user + "@" + server_ip + " " + recv_command +
-    #                        " > /home/hkucs/qemu_output/log-" +
-    #                        server_ip + "-cpu[" + server_cpu + "]-mem[" + server_memory + "]-" +
-    #                        getTimeStamp() + " &", shell=True, stdout=subprocess.PIPE)
     filename = "/home/hkucs/qemu_output/[" + type + "]log-" + server_ip + "-cpu[" + server_cpu + "]-mem[" + server_memory + "]-" + getTimeStamp()
     # fobj = open(filename, "w")
     # ssh_remote_execute("ln -fs " + filename + " /home/hkucs/qemu_output/latest_slave_log", server_user, primary_ip)
     os.system("ln -fs " + filename + " /home/hkucs/qemu_output/latest_slave_log")
     log = subprocess.Popen("nohup ssh " + server_user + "@" + server_ip + " " + recv_command
                            + " > " + filename + " &", shell=True, stdout=subprocess.PIPE)
-    # ret = log.poll()
-    # while ret is None:
-    #     line = log.stdout.readline()
-    #     ret = log.poll()
-    #     line = line.strip()
-    #     fobj.write(line + "\n")
-    #     fobj.flush()
 
 
 
 def ssh_remote_nc(recv_command, server_user, server_ip, telnet_ip, telnet_port, seconds=1):
-    os.system("ssh -t " + server_user + "@" + server_ip +
+    os.system("ssh " + server_user + "@" + server_ip +
               ' echo "' + recv_command +
               '" | nc ' + telnet_ip + " " + telnet_port)
     time.sleep(seconds)
