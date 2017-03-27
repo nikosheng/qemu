@@ -190,6 +190,7 @@ if __name__ == "__main__":
             'qemu_monitor_enable_mc_disk_disable']
         QEMU_MONITOR_ENABLE_MC_NET_DISABLE = getConfigSections(local_config, "KVM_MC")[
             'qemu_monitor_enable_mc_net_disable']
+        MIGRATE_SET_MC_DELAY = getConfigSections(local_config, "KVM_MC")['migrate_set_mc_delay']
         QEMU_MONITOR_START_MC = getConfigSections(local_config, "KVM_MC")['qemu_monitor_start_mc']
     elif type == "colo":
         # MEMORY = getConfigSections(local_config, "KVM_COLO_MASTER")['memory']
@@ -245,7 +246,7 @@ if __name__ == "__main__":
         if type in ['norep', 'mc']:
             command = "sudo " + PRIMARY_QEMU_PATH +"qemu/x86_64-softmmu/qemu-system-x86_64 " \
                       "/ubuntu/" + MIRROR + " -m " + MEMORY + " -smp " + CPU + \
-                      " --enable-kvm -netdev tap,id=net0,ifname=tap0," \
+                      " -cpu host --enable-kvm -netdev tap,id=net0,ifname=tap0," \
                       "script=/etc/qemu-ifup,downscript=/etc/qemu-ifdown " \
                       "-device e1000,netdev=net0,mac=18:66:da:03:15:b1 " \
                       "-monitor telnet:" + TELNET_IP + ":" + TELNET_PORT + \
@@ -256,20 +257,20 @@ if __name__ == "__main__":
             t1.start()
             time.sleep(5)
 
-            command = "sudo " + SECONDARY_QEMU_PATH + "qemu/x86_64-softmmu/qemu-system-x86_64" \
-                      " /local/ubuntu/" + MIRROR + " -m " + MEMORY + " -smp " + CPU + \
-                      " --enable-kvm -netdev tap,id=net0," \
-                      "ifname=tap0,script=/etc/qemu-ifup," \
-                      "downscript=/etc/qemu-ifdown -device e1000," \
-                      "netdev=net0,mac=18:66:da:03:15:b1 -vnc :8 " \
-                      "-incoming tcp:" + TCP_ADDRESS
-            # ssh_remote_execute(command, SECONDARY_USERNAME, SECONDARY_IP, 5)
-            t2 = threading.Thread(target=ssh_remote_subprocess_slave,
-                                  args=(command, SECONDARY_USERNAME, SECONDARY_IP, PRIMARY_IP, CPU, MEMORY, type))
-            t2.start()
-            time.sleep(5)
-
             if type == "mc":
+                command = "sudo " + SECONDARY_QEMU_PATH + "qemu/x86_64-softmmu/qemu-system-x86_64" \
+                                                          " /local/ubuntu/" + MIRROR + " -m " + MEMORY + " -smp " + CPU + \
+                          " -cpu host --enable-kvm -netdev tap,id=net0," \
+                          "ifname=tap0,script=/etc/qemu-ifup," \
+                          "downscript=/etc/qemu-ifdown -device e1000," \
+                          "netdev=net0,mac=18:66:da:03:15:b1 -vnc :8 " \
+                          "-incoming tcp:" + TCP_ADDRESS
+                # ssh_remote_execute(command, SECONDARY_USERNAME, SECONDARY_IP, 5)
+                t2 = threading.Thread(target=ssh_remote_subprocess_slave,
+                                      args=(command, SECONDARY_USERNAME, SECONDARY_IP, PRIMARY_IP, CPU, MEMORY, type))
+                t2.start()
+                time.sleep(5)
+
                 init_dirty_pages(REMOTE_DIRTY_INIT_COMMAND, VM_USER, VM_IP)
                 ssh_remote_execute("sudo modprobe ifb numifbs=" + NUMIFBS, PRIMARY_USERNAME, PRIMARY_IP, 2)
                 ssh_remote_execute("sudo ip link set up ifb0", PRIMARY_USERNAME, PRIMARY_IP, 2)
@@ -279,6 +280,7 @@ if __name__ == "__main__":
 
                 ssh_remote_nc(QEMU_MONITOR_ENABLE_MC, PRIMARY_USERNAME, PRIMARY_IP, TELNET_IP, TELNET_PORT, 2)
                 ssh_remote_nc(QEMU_MONITOR_ENABLE_MC_DISK_DISABLE, PRIMARY_USERNAME, PRIMARY_IP, TELNET_IP, TELNET_PORT, 2)
+                ssh_remote_nc(MIGRATE_SET_MC_DELAY, PRIMARY_USERNAME, PRIMARY_IP, TELNET_IP, TELNET_PORT, 2)
                 # ssh_remote_nc(QEMU_MONITOR_ENABLE_MC_NET_DISABLE, PRIMARY_USERNAME, PRIMARY_IP, TELNET_IP, TELNET_PORT, 2)
                 ssh_remote_nc(QEMU_MONITOR_START_MC, PRIMARY_USERNAME, PRIMARY_IP, TELNET_IP, TELNET_PORT, 2)
 
@@ -294,7 +296,7 @@ if __name__ == "__main__":
                 # ssh_remote_execute(MASTER_VHOST_NET, PRIMARY_USERNAME, PRIMARY_IP, 1)
                 # ssh_remote_execute(MASTER_EXPERIMENTAL_ZCOPYTX, PRIMARY_USERNAME, PRIMARY_IP, 1)
                 command = "sudo " + PRIMARY_QEMU_PATH + \
-                          "x86_64-softmmu/qemu-system-x86_64 -machine pc-i440fx-2.3," \
+                          "x86_64-softmmu/qemu-system-x86_64 -cpu host -machine pc-i440fx-2.3," \
                           "accel=kvm,usb=off -netdev tap,id=hn0," \
                           "script=/etc/qemu-ifup,downscript=/etc/qemu-ifdown," \
                           "colo_script=/home/hkucs/qemu/scripts/colo-proxy-script.sh," \
@@ -321,7 +323,7 @@ if __name__ == "__main__":
                 # ssh_remote_execute(SLAVE_VHOST_NET, SECONDARY_USERNAME, SECONDARY_IP, 1)
                 # ssh_remote_execute(SLAVE_EXPERIMENTAL_ZCOPYTX, SECONDARY_USERNAME, SECONDARY_IP, 1)
                 command = "sudo " + SECONDARY_QEMU_PATH + "x86_64-softmmu/qemu-system-x86_64 -machine " \
-                                                          "pc-i440fx-2.3,accel=kvm,usb=off -netdev tap,id=hn0," \
+                                                          "pc-i440fx-2.3,accel=kvm,usb=off -cpu host -netdev tap,id=hn0," \
                                                           "script=/etc/qemu-ifup,downscript=/etc/qemu-ifdown," \
                                                           "colo_script=/home/hkucs/qemu/scripts/colo-proxy-script.sh," \
                                                           "forward_nic=eth6 -device virtio-net-pci," \
@@ -357,7 +359,7 @@ if __name__ == "__main__":
 
         elif type == "vmft":
             command = "sudo LD_LIBRARY_PATH=$VMFT_ROOT/rdma-paxos/target:$LD_LIBRARY_PATH " \
-                      "x86_64-softmmu/qemu-system-x86_64 -enable-kvm -boot c " \
+                      "x86_64-softmmu/qemu-system-x86_64 -cpu host -enable-kvm -boot c " \
                       "-m " + MEMORY + " -smp " + CPU + " -qmp stdio -vnc :8 " \
                       "-name primary -cpu qemu64,+kvmclock -device piix3-usb-uhci " \
                       "-drive if=virtio,id=colo-disk0,driver=quorum,read-pattern=fifo," \
@@ -373,7 +375,7 @@ if __name__ == "__main__":
             time.sleep(5)
 
             command = "sudo LD_LIBRARY_PATH=$VMFT_ROOT/rdma-paxos/target:$LD_LIBRARY_PATH " \
-                      "x86_64-softmmu/qemu-system-x86_64 -boot c " \
+                      "x86_64-softmmu/qemu-system-x86_64 -cpu host -boot c " \
                       "-m " + MEMORY + " -smp " + CPU + " -qmp stdio -vnc :8 " \
                       "-name secondary -enable-kvm -cpu qemu64," \
                       "+kvmclock -device piix3-usb-uhci -drive if=none,id=colo-disk0," \
