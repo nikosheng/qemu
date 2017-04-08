@@ -180,7 +180,8 @@ if __name__ == "__main__":
         # MEMORY = getConfigSections(local_config, "KVM_MC")['memory']
         TELNET_IP = getConfigSections(local_config, "KVM_MC")['telnet_ip']
         TELNET_PORT = getConfigSections(local_config, "KVM_MC")['telnet_port']
-        MIRROR = getConfigSections(local_config, "KVM_MC")['mirror']
+        MASTER_MIRROR = getConfigSections(local_config, "KVM_MC")['master_mirror']
+        SLAVE_MIRROR = getConfigSections(local_config, "KVM_MC")['slave_mirror']
         TCP_ADDRESS = getConfigSections(local_config, "KVM_MC")['tcp_address']
         REMOTE_DIRTY_INIT_COMMAND = getConfigSections(local_config, "KVM_MC")['remote_dirty_init_command']
         VM_USER = getConfigSections(local_config, "KVM_MC")['vm_user']
@@ -244,8 +245,8 @@ if __name__ == "__main__":
     # 3. launch or shutdown the environment
     if mode == "start":
         if type in ['norep', 'mc']:
-            command = "sudo " + PRIMARY_QEMU_PATH +"qemu/x86_64-softmmu/qemu-system-x86_64 " \
-                      "/ubuntu/" + MIRROR + " -m " + MEMORY + " -smp " + CPU + \
+            command = "sudo " + PRIMARY_QEMU_PATH +"qemu/x86_64-softmmu/qemu-system-x86_64 " + \
+                      MASTER_MIRROR + " -m " + MEMORY + " -smp " + CPU + \
                       " -cpu host --enable-kvm -netdev tap,id=net0,ifname=tap0," \
                       "script=/etc/qemu-ifup,downscript=/etc/qemu-ifdown " \
                       "-device e1000,netdev=net0,mac=18:66:da:03:15:b1 " \
@@ -258,8 +259,8 @@ if __name__ == "__main__":
             time.sleep(5)
 
             if type == "mc":
-                command = "sudo " + SECONDARY_QEMU_PATH + "qemu/x86_64-softmmu/qemu-system-x86_64" \
-                                                          " /local/ubuntu/" + MIRROR + " -m " + MEMORY + " -smp " + CPU + \
+                command = "sudo " + SECONDARY_QEMU_PATH + "qemu/x86_64-softmmu/qemu-system-x86_64" + \
+                          SLAVE_MIRROR + " -m " + MEMORY + " -smp " + CPU + \
                           " -cpu host --enable-kvm -netdev tap,id=net0," \
                           "ifname=tap0,script=/etc/qemu-ifup," \
                           "downscript=/etc/qemu-ifdown -device e1000," \
